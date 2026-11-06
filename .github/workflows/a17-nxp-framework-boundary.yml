@@ -1,0 +1,68 @@
+name: Android17 NXP Java framework and Mainline SE boundary
+
+on:
+  push:
+    branches:
+      - audit/a17-nxp-framework-boundary-20261107
+    paths:
+      - 'audit/check_nxp_framework_boundary.py'
+      - 'docs/ANDROID_17_NXP_FRAMEWORK_BOUNDARY_AUDIT.md'
+      - '.github/workflows/a17-nxp-framework-boundary.yml'
+  pull_request:
+    paths:
+      - 'audit/check_nxp_framework_boundary.py'
+      - 'docs/ANDROID_17_NXP_FRAMEWORK_BOUNDARY_AUDIT.md'
+      - '.github/workflows/a17-nxp-framework-boundary.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  source-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout isolated audit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Fetch original untouched PE NXP framework
+        run: |
+          git fetch -q --no-tags --depth=1 origin \
+            +refs/heads/seventeen:refs/remotes/origin/seventeen
+      - name: Fetch official Android17 NFC Mainline source
+        run: |
+          git init -q "$RUNNER_TEMP/aosp17-nfc"
+          git -C "$RUNNER_TEMP/aosp17-nfc" remote add origin \
+            https://android.googlesource.com/platform/packages/modules/Nfc
+          git -C "$RUNNER_TEMP/aosp17-nfc" fetch -q --no-tags \
+            --filter=blob:none --depth=1 origin refs/tags/android-17.0.0_r1
+      - name: Fetch official Android17 Secure Element native service
+        run: |
+          git init -q "$RUNNER_TEMP/aosp17-secure-element"
+          git -C "$RUNNER_TEMP/aosp17-secure-element" remote add origin \
+            https://android.googlesource.com/platform/system/secure_element
+          git -C "$RUNNER_TEMP/aosp17-secure-element" fetch -q --no-tags \
+            --filter=blob:none --depth=1 origin refs/tags/android-17.0.0_r1
+      - name: Fetch reviewed AOSP17 PE-Reborn manifest
+        run: |
+          git clone -q --depth=1 \
+            --branch port/a17-aosp17-manifest-20261102 \
+            https://github.com/PixelExperience-Reborn/manifest.git \
+            "$RUNNER_TEMP/manifest"
+      - name: Check NXP framework against NFC and SE official owners
+        run: |
+          python3 audit/check_nxp_framework_boundary.py \
+            "$GITHUB_WORKSPACE" "$RUNNER_TEMP/aosp17-nfc" \
+            "$RUNNER_TEMP/aosp17-secure-element" "$RUNNER_TEMP/manifest"
+      - name: Run manifest positive and negative regression tests
+        run: |
+          cd "$RUNNER_TEMP/manifest"
+          python3 -m unittest discover -s tools \
+            -p test_aosp17_manifest_entrypoint.py -v
+      - name: Verification limits
+        run: |
+          echo "SOURCE ONLY: historical NXP Java APIs, AOSP17 NFC, OMAPI and manifest."
+          echo "NOT TESTED: Android17 Java/Soong, APEX, SE/APDU, NFC WLC, permission"
+          echo "enforcement, VINTF, SELinux, device boot or mondrian."
