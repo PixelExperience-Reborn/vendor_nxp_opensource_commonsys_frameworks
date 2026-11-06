@@ -122,6 +122,26 @@ def active_manifest(repo):
     require("vendor/nxp/opensource/commonsys/frameworks" not in owners
             and "vendor_nxp_opensource_commonsys_frameworks" not in owners.values(),
             "unreviewed legacy NXP Java frameworks enabled")
+    # The manifest checkout can race separate commits during CI. A source
+    # pass is not sufficient unless row 167's two new guards and both
+    # adversarial tests are actually present in the resolved checkout.
+    validator = (root / "tools/validate_aosp17_base_profiles.py").read_text(
+        encoding="utf-8")
+    regressions = (root / "tools/test_aosp17_manifest_entrypoint.py").read_text(
+        encoding="utf-8")
+    require('"system/secure_element": "platform/system/secure_element"'
+            in validator, "AOSP17 Secure Element owner guard missing")
+    require('if "vendor/nxp/opensource/commonsys/frameworks" in projects:'
+            in validator, "row 167 legacy NXP Java framework guard missing")
+    require('"vendor_nxp_opensource_commonsys_frameworks"' in validator,
+            "row 167 legacy NXP source-name guard missing")
+    for name in (
+        "test_legacy_nxp_java_nfc_framework_cannot_enter_android17",
+        "test_nxp_java_framework_must_not_replace_aosp17_secure_element",
+    ):
+        require(f"def {name}(" in regressions,
+                f"missing adversarial row 167 regression: {name}")
+    print("PASS: both row 167 manifest guards and negative tests are present")
     subprocess.run(
         [sys.executable, str(root / "tools/validate_aosp17_base_profiles.py")],
         cwd=root, check=True)
